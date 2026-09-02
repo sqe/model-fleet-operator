@@ -1,0 +1,5 @@
+{
+  "profile": "bare-metal",
+  "namespace": "models",
+  "serviceAccount": "model-runner"
+}

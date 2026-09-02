@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadApprovedServiceQuotas",
+      "Effect": "Allow",
+      "Action": [
+        "servicequotas:GetServiceQuota",
+        "servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RequestApprovedQuotaIncrease",
+      "Effect": "Allow",
+      "Action": "servicequotas:RequestServiceQuotaIncrease",
+      "Resource": "arn:aws:servicequotas:us-west-2:123456789012:ec2/L-DB2E81BA"
+    }
+  ]
+}

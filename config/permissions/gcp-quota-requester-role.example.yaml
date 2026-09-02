@@ -1,0 +1,10 @@
+title: Model Fleet Quota Requester
+description: Read quota state and submit approved quota preferences from the Slack service.
+stage: GA
+includedPermissions:
+  - cloudquotas.quotas.get
+  - cloudquotas.quotas.update
+  - monitoring.timeSeries.list
+  - resourcemanager.projects.get
+  - serviceusage.services.list
+  - serviceusage.quotas.update

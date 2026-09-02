@@ -1,0 +1,22 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: TrainingRun
+metadata:
+  name: sentiment-20260829
+  namespace: models
+spec:
+  image: registry.example/research/sentiment-trainer@sha256:REPLACE_WITH_IMAGE_DIGEST
+  serviceAccountName: training-public
+  command: [python, /app/train.py]
+  args: [--datasets-env, MODEL_FLEET_DATASETS_JSON]
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef: {name: huggingface-read-token, key: token}
+  datasets:
+    - name: training
+      datasetRef: imdb-e6281661
+      expectedVersion: e6281661ce1c48d982bc483cf8a173c1bbeb5d31
+  resources:
+    requests: {cpu: "2", memory: 8Gi}
+  backoffLimit: 1
+  activeDeadlineSeconds: 14400

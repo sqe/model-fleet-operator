@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e '.[dev,docs]'
+      - run: ruff check src tests scripts
+      - run: ruff format --check src tests scripts
+      - run: pytest
+      - run: sphinx-build -W -b html docs docs/_build/html
+      - uses: azure/setup-helm@v4
+      - run: |
+          for profile in kind microk8s aws gcp; do
+            helm lint charts/model-fleet-operator --set profile="$profile"
+          done
+      - run: helm lint charts/aws-karpenter-capacity --set clusterName=test,discoveryTag=test,nodeRoleName=test
+      - run: |
+          helm template model-fleet charts/model-fleet-operator \
+            --set profile=kind,kafka.enabled=true,kafka.bootstrapServers=kafka:9092 \
+            --set controlPlane.enabled=true,controlPlane.existingSecret=control-secret \
+            --set controlPlane.supervisorRoute.enabled=true,controlPlane.supervisorRoute.hostname=supervisor.example.test \
+            --set controlPlane.gatewayRoute.enabled=true,controlPlane.gatewayRoute.hostname=gateway.example.test \
+            --set controlPlane.fleetAgentRoute.enabled=true,controlPlane.fleetAgentRoute.hostname=agent.example.test \
+            >/dev/null
+      - run: |
+          helm repo add cilium https://helm.cilium.io
+          helm template cilium cilium/cilium --namespace kube-system --version 1.20.1 \
+            --values infra/cilium/hubble-values.yaml >/dev/null
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sdk/go/go.mod
+          cache-dependency-path: sdk/go/go.mod
+      - run: cd sdk/go && go test ./...
+      - uses: bufbuild/buf-setup-action@v1
+      - run: buf lint && buf generate
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra/terraform
+      - run: terraform -chdir=infra/terraform/addons init -backend=false && terraform -chdir=infra/terraform/addons validate
+      - run: terraform -chdir=infra/terraform/aws-karpenter init -backend=false && terraform -chdir=infra/terraform/aws-karpenter validate
+      - run: terraform -chdir=infra/terraform/kind init -backend=false && terraform -chdir=infra/terraform/kind validate

@@ -1,0 +1,18 @@
+# Install the reconciler and the Socket Mode Slack operations agent together.
+profile: aws
+
+slack:
+  enabled: true
+  existingSecret: model-fleet-slack
+  extraEnv:
+    - {name: DEFAULT_WORKLOAD_NAMESPACE, value: models}
+    - {name: SLACK_ALLOWED_USER_IDS, value: "U01234567,U07654321"}
+    - {name: SLACK_ALLOWED_CHANNEL_IDS, value: "C01234567"}
+
+# Slack can publish durable commands when Kafka is enabled. Leave disabled for
+# direct, audited Kubernetes patches.
+kafka:
+  enabled: false
+
+controlPlane:
+  enabled: false

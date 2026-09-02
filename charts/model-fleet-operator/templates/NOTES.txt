@@ -1,0 +1,9 @@
+Model Fleet Operator is installed in {{ .Release.Namespace }} using profile {{ .Values.profile }}.
+
+CRDs installed: InferenceService and TrainingRun (fleet.sqe.io/v1alpha1).
+{{- if .Values.slack.enabled }}
+The Slack bot uses credentials from Secret {{ .Values.slack.existingSecret }}; no ingress is required.
+{{- end }}
+{{- if .Values.karpenterAvailable }}
+Karpenter capability is advertised. This chart does not install or configure Karpenter infrastructure.
+{{- end }}

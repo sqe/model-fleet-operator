@@ -1,0 +1,18 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: Dataset
+metadata:
+  name: support-tickets-2026-08-28
+  namespace: models
+spec:
+  uri: pvc://support-datasets/releases/2026-08-28
+  version: "2026-08-28"
+  format: jsonl
+  owner: support-ml
+  description: Reviewed support-ticket training export.
+  classification: confidential
+  sizeBytes: 2147483648
+  allowedServiceAccounts: [support-training]
+  storage:
+    pvc:
+      claimName: support-datasets
+      subPath: releases/2026-08-28

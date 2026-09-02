@@ -1,0 +1,45 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: TrainingRun
+metadata:
+  name: validate-granite-api
+  namespace: models
+spec:
+  image: python:3.13-slim
+  command: [python, -c]
+  args:
+    - |
+      import json, os, time, urllib.request
+      base = os.environ["TARGET_URL"].rstrip("/")
+      model = os.environ["MODEL"]
+      headers = {"Content-Type": "application/json"}
+      if token := os.getenv("API_KEY"):
+          headers["Authorization"] = f"Bearer {token}"
+      def request(path, body=None):
+          data = json.dumps(body).encode() if body else None
+          req = urllib.request.Request(base + path, data=data, headers=headers)
+          with urllib.request.urlopen(req, timeout=60) as response:
+              return json.load(response)
+      models = request("/v1/models")
+      assert isinstance(models.get("data"), list), "invalid models response"
+      started = time.monotonic()
+      result = request("/v1/chat/completions", {
+          "model": model,
+          "messages": [{"role": "user", "content": "Reply with exactly READY"}],
+          "temperature": 0,
+          "max_tokens": 8,
+      })
+      latency = time.monotonic() - started
+      content = result["choices"][0]["message"]["content"].strip()
+      assert content, "empty completion"
+      print(json.dumps({"status": "passed", "model": model, "latency_seconds": latency,
+                        "usage": result.get("usage", {}), "response": content}))
+  env:
+    - {name: TARGET_URL, value: http://granite-3.models.svc}
+    - {name: MODEL, value: ibm-granite/granite-3.3-2b-instruct}
+    # Add API_KEY with secretKeyRef when the target requires authentication.
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600
+  resources:
+    requests: {cpu: 100m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}

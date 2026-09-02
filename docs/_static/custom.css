@@ -1,0 +1,28 @@
+:root {
+  --fleet-ink: #172033;
+  --fleet-blue: #2367a9;
+  --fleet-green: #17805c;
+}
+
+.wy-nav-content {
+  max-width: 1040px;
+}
+
+.wy-side-nav-search,
+.wy-nav-top {
+  background: var(--fleet-ink);
+}
+
+.mermaid {
+  margin: 1.5rem auto;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.rst-content code.literal {
+  color: var(--fleet-blue);
+}
+
+.rst-content .admonition-title {
+  letter-spacing: 0.01em;
+}

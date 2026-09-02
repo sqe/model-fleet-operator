@@ -1,0 +1,43 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: TrainingRun
+metadata:
+  name: qwen3-vl-4b-image-lora
+  namespace: models
+spec:
+  image: ghcr.io/REPLACE_WITH_OWNER/agentic-platform-qwen3-vl-training:0.1.0
+  env:
+    - {name: MODEL_PATH, value: /models/qwen3-vl-4b}
+    - {name: ANNOTATION_PATH, value: /data/annotations.json}
+    - {name: MEDIA_PATH, value: /data/images}
+    - {name: OUTPUT_PATH, value: /output}
+    - {name: MAX_LENGTH, value: "4096"}
+    - {name: BATCH_SIZE, value: "1"}
+    - {name: GRADIENT_ACCUMULATION, value: "16"}
+  resources:
+    requests: {cpu: "8", memory: 32Gi, nvidia.com/gpu: "1"}
+    limits: {nvidia.com/gpu: "1"}
+  accelerator:
+    count: 1
+    class: gpu-24gb
+    fit:
+      modules:
+        - {name: model-and-lora, memoryGiB: 10, distribution: replicated}
+        - {name: activations, memoryGiB: 5, distribution: replicated}
+        - {name: optimizer-and-runtime, memoryGiB: 3, distribution: replicated}
+      safetyMarginPercent: 15
+  backoffLimit: 1
+  activeDeadlineSeconds: 43200
+  ttlSecondsAfterFinished: 86400
+  tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  volumes:
+    - name: dataset
+      persistentVolumeClaim: {claimName: qwen3-vl-dataset}
+    - name: output
+      persistentVolumeClaim: {claimName: model-artifacts}
+    - name: model-cache
+      persistentVolumeClaim: {claimName: model-cache}
+  volumeMounts:
+    - {name: dataset, mountPath: /data, readOnly: true}
+    - {name: output, mountPath: /output}
+    - {name: model-cache, mountPath: /models}

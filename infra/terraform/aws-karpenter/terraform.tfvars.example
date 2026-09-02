@@ -1,0 +1,10 @@
+aws_region  = "us-west-2"
+cluster_name = "my-eks-cluster"
+
+# Karpenter itself must run on an existing managed node group.
+controller_node_selector = {
+  "karpenter.sh/controller" = "true"
+}
+
+gpu_instance_families = ["g5", "g6", "g6e", "p4", "p5"]
+gpu_capacity_types    = ["spot", "on-demand"]

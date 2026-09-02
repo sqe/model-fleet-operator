@@ -1,0 +1,13 @@
+{
+  "profile": "aws",
+  "namespace": "models",
+  "serviceAccount": "model-runner",
+  "roleArn": "arn:aws:iam::123456789012:role/model-fleet-model-runner",
+  "readResources": [
+    "arn:aws:s3:::research-models/models/*",
+    "arn:aws:s3:::research-models/datasets/*"
+  ],
+  "writeResources": [
+    "arn:aws:s3:::research-results/runs/*"
+  ]
+}

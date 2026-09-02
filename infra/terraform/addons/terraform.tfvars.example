@@ -1,0 +1,20 @@
+kubeconfig_path = "~/.kube/config"
+kube_context     = "my-existing-cluster"
+profile          = "microk8s"
+image_tag        = "0.1.0"
+
+# Slack credentials must already exist in this namespace.
+slack_enabled         = false
+slack_existing_secret = "model-fleet-slack"
+
+# AWS/EKS only. This advertises an already operational Karpenter installation.
+karpenter_available = false
+
+# Optional durable Slack/control command path. The Kafka cluster is external.
+kafka_enabled           = false
+kafka_bootstrap_servers = "kafka.kafka.svc.cluster.local:9092"
+
+# For EKS/GKE GPU images with drivers already installed, keep preinstalled.
+# On compatible Ubuntu bare metal, use operator to manage host drivers.
+gpu_stack_enabled = false
+gpu_driver_mode   = "preinstalled"

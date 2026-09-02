@@ -1,0 +1,28 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: model-echo
+  namespace: default
+spec:
+  model:
+    name: local-smoke-test
+  container:
+    image: ealen/echo-server:0.9.2
+    port: 80
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  replicas: 1
+  service:
+    port: 80
+  gateway:
+    enabled: true
+    name: model-fleet
+    namespace: model-fleet-system
+    sectionName: http
+    hostnames: [model.localhost]
+    pathPrefix: /

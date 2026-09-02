@@ -1,0 +1,18 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: TrainingRun
+metadata:
+  name: validate-gpu-24gb
+  namespace: models
+spec:
+  image: nvidia/cuda:13.0.1-base-ubuntu24.04
+  command: [bash, -ceu]
+  args:
+    - |
+      nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+      test "$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)" -ge 24000
+  accelerator:
+    count: 1
+    minimumMemoryGiB: 24
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600

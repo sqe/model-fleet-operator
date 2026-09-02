@@ -1,0 +1,6 @@
+apiVersion: v2
+name: aws-karpenter-capacity
+description: Karpenter capacity classes for Model Fleet workloads on EKS
+type: application
+version: 0.1.0
+appVersion: "1.14.1"

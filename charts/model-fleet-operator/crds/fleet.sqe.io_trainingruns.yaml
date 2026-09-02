@@ -1,0 +1,110 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: trainingruns.fleet.sqe.io
+spec:
+  group: fleet.sqe.io
+  scope: Namespaced
+  names: {kind: TrainingRun, listKind: TrainingRunList, plural: trainingruns, singular: trainingrun, shortNames: [trun]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      additionalPrinterColumns:
+        - {name: Phase, type: string, jsonPath: .status.phase}
+        - {name: Job, type: string, jsonPath: .status.jobName}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion: {type: string}
+            kind: {type: string}
+            metadata: {type: object}
+            spec:
+              type: object
+              required: [image]
+              properties:
+                image: {type: string, minLength: 1}
+                imagePullPolicy: {type: string, enum: [Always, IfNotPresent, Never], default: IfNotPresent}
+                command: {type: array, items: {type: string}}
+                args: {type: array, items: {type: string}}
+                env:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: {type: string}
+                      value: {type: string}
+                      valueFrom: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                envFrom: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                resources: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                restartPolicy: {type: string, enum: [Never, OnFailure], default: Never}
+                backoffLimit: {type: integer, minimum: 0, default: 0}
+                parallelism: {type: integer, minimum: 1, default: 1}
+                completions: {type: integer, minimum: 1, default: 1}
+                suspend: {type: boolean, default: false}
+                cancelled: {type: boolean, default: false}
+                ttlSecondsAfterFinished: {type: integer, minimum: 0}
+                activeDeadlineSeconds: {type: integer, format: int64, minimum: 1}
+                serviceAccountName: {type: string, default: default}
+                automountServiceAccountToken: {type: boolean, default: false}
+                imagePullSecrets: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                initContainers: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                datasets:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name, datasetRef, expectedVersion]
+                    properties:
+                      name: {type: string, pattern: '^[a-z][a-z0-9-]*$'}
+                      datasetRef: {type: string, minLength: 1}
+                      expectedVersion: {type: string, minLength: 1}
+                      mountPath: {type: string, pattern: '^/'}
+                nodeSelector: {type: object, additionalProperties: {type: string}}
+                tolerations: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                affinity: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                accelerator:
+                  type: object
+                  properties:
+                    count: {type: integer, minimum: 1, default: 1}
+                    minimumMemoryGiB: {type: integer, minimum: 1}
+                    class: {type: string, enum: [auto, gpu-24gb, gpu-48gb, gpu-80gb, gpu-80gb-plus], default: auto}
+                    products:
+                      type: array
+                      minItems: 1
+                      uniqueItems: true
+                      items: {type: string, minLength: 1}
+                    fit:
+                      type: object
+                      required: [modules]
+                      properties:
+                        safetyMarginPercent: {type: number, minimum: 0, maximum: 100, default: 10}
+                        modules:
+                          type: array
+                          minItems: 1
+                          x-kubernetes-list-type: map
+                          x-kubernetes-list-map-keys: [name]
+                          items:
+                            type: object
+                            required: [name, memoryGiB]
+                            properties:
+                              name: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'}
+                              memoryGiB: {type: number, exclusiveMinimum: 0}
+                              distribution: {type: string, enum: [sharded, replicated], default: replicated}
+                volumes: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                volumeMounts: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+            status:
+              type: object
+              properties:
+                phase: {type: string}
+                message: {type: string}
+                jobName: {type: string}
+                startTime: {type: string, format: date-time}
+                completionTime: {type: string, format: date-time}
+                observedGeneration: {type: integer, format: int64}
+                conditions: {type: array, x-kubernetes-list-type: map, x-kubernetes-list-map-keys: [type], items: {type: object, x-kubernetes-preserve-unknown-fields: true}}

@@ -1,0 +1,21 @@
+{{- if .Values.operator.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-operator
+spec:
+  minAvailable: {{ .Values.operator.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: operator}
+{{- end }}
+{{- if and .Values.slack.enabled .Values.slack.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-slack
+spec:
+  minAvailable: {{ .Values.slack.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: slack}
+{{- end }}

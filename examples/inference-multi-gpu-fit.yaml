@@ -1,0 +1,36 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: large-model
+  namespace: models
+spec:
+  model:
+    name: example/large-model
+    version: immutable-revision
+    uri: hf://example/large-model@immutable-revision
+  container:
+    image: vllm/vllm-openai:v0.10.1
+    args: [--model, example/large-model, --tensor-parallel-size, "2", --host, 0.0.0.0]
+    port: 8000
+    resources:
+      requests: {cpu: "8", memory: 32Gi, nvidia.com/gpu: "2"}
+      limits: {nvidia.com/gpu: "2"}
+  replicas: 1
+  accelerator:
+    count: 2
+    fit:
+      modules:
+        # Sharded memory is divided by accelerator.count.
+        - {name: model-weights, memoryGiB: 70, distribution: sharded}
+        - {name: kv-cache, memoryGiB: 20, distribution: sharded}
+        # Replicated memory is required on every GPU.
+        - {name: vllm-runtime, memoryGiB: 4, distribution: replicated}
+      safetyMarginPercent: 10
+    # These labels must be advertised by existing nodes or by product-specific
+    # capacity-provider node-pool templates for scale-from-zero.
+    products:
+      - NVIDIA-A100-SXM4-80GB
+      - NVIDIA-H100-80GB-HBM3
+  tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  service: {port: 80}

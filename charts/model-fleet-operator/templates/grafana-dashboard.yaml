@@ -1,0 +1,12 @@
+{{- if .Values.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "model-fleet.labels" . | nindent 4 }}
+    {{ .Values.grafanaDashboard.label | quote }}: {{ .Values.grafanaDashboard.labelValue | quote }}
+data:
+  {{ .Values.grafanaDashboard.key | quote }}: |-
+{{ .Files.Get "dashboards/model-fleet.json" | indent 4 }}
+{{- end }}

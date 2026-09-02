@@ -1,0 +1,55 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: <service-name>
+  namespace: models
+spec:
+  model:
+    name: <hugging-face-repository-id>
+    version: <commit-sha>
+    uri: hf://<hugging-face-repository-id>@<commit-sha>
+  initContainers:
+    - name: model-fetcher
+      image: <approved-model-fetcher-image>@sha256:<image-digest>
+      args:
+        - download
+        - <hugging-face-repository-id>
+        - --revision
+        - <commit-sha>
+        - --local-dir
+        - /models/repository
+      env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-read-token
+              key: token
+              optional: false
+      volumeMounts:
+        - {name: model-cache, mountPath: /models}
+  container:
+    image: vllm/vllm-openai:<version>@sha256:<image-digest>
+    args: [--model, /models/repository, --host, 0.0.0.0]
+    env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef: {name: huggingface-read-token, key: token}
+    port: 8000
+    volumeMounts:
+      - {name: model-cache, mountPath: /models, readOnly: true}
+    resources:
+      requests: {cpu: "2", memory: 8Gi, nvidia.com/gpu: "1"}
+      limits: {nvidia.com/gpu: "1"}
+  volumes:
+    - name: model-cache
+      emptyDir: {}
+  replicas: 1
+  accelerator:
+    count: 1
+    fit:
+      modules:
+        - {name: model-weights, memoryGiB: <weights-gib>, distribution: sharded}
+        - {name: kv-cache, memoryGiB: <kv-cache-gib>, distribution: sharded}
+        - {name: runtime, memoryGiB: <runtime-gib>, distribution: replicated}
+      safetyMarginPercent: 10
+  service: {port: 80}

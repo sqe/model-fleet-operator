@@ -1,0 +1,35 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: TrainingRun
+metadata:
+  name: <model-name>-<run-id>
+  namespace: models
+spec:
+  image: <training-image>@sha256:<image-digest>
+  command: [python, -m, training.run]
+  args:
+    - --model
+    - <hugging-face-repository-id>@<commit-sha>
+    - --dataset
+    - <dataset-id>@<revision>
+    - --output
+    - /artifacts/<run-id>
+  env:
+    - {name: MLFLOW_TRACKING_URI, value: http://mlflow.models.svc:5000}
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: huggingface-read-token
+          key: token
+          optional: false
+  accelerator: {count: 1, minimumMemoryGiB: 40}
+  resources:
+    requests: {cpu: "4", memory: 24Gi, nvidia.com/gpu: "1"}
+    limits: {nvidia.com/gpu: "1"}
+  volumes:
+    - name: artifacts
+      persistentVolumeClaim: {claimName: model-artifacts}
+  volumeMounts:
+    - {name: artifacts, mountPath: /artifacts}
+  backoffLimit: 1
+  activeDeadlineSeconds: 43200
+  ttlSecondsAfterFinished: 86400

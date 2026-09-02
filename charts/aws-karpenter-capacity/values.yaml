@@ -1,0 +1,29 @@
+clusterName: ""
+discoveryTag: ""
+nodeRoleName: ""
+amiAlias: al2023@latest
+
+cpu:
+  enabled: true
+  capacityTypes: [spot, on-demand]
+  categories: [c, m, r]
+  architectures: [amd64, arm64]
+  cpuLimit: "500"
+  memoryLimit: 1000Gi
+
+gpu:
+  enabled: true
+  capacityTypes: [spot, on-demand]
+  families: [g5, g6, g6e, p4, p5]
+  architectures: [amd64]
+  classes:
+    - {name: gpu-24gb, minMemoryMiB: 22000, maxMemoryMiB: 24576, gpuLimit: "16"}
+    - {name: gpu-48gb, minMemoryMiB: 45000, maxMemoryMiB: 49152, gpuLimit: "8"}
+    - {name: gpu-80gb, minMemoryMiB: 78000, maxMemoryMiB: 81920, gpuLimit: "8"}
+    - {name: gpu-80gb-plus, minMemoryMiB: 81921, gpuLimit: "8"}
+  cpuLimit: "384"
+  memoryLimit: 3000Gi
+
+disruption:
+  consolidationPolicy: WhenEmptyOrUnderutilized
+  consolidateAfter: 5m

@@ -1,0 +1,42 @@
+{{- include "model-fleet.require" . }}
+{{- if .Values.cpu.enabled }}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: model-fleet-cpu
+spec:
+  amiSelectorTerms:
+    - alias: {{ .Values.amiAlias | quote }}
+  role: {{ .Values.nodeRoleName | quote }}
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+  tags:
+    karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+    model-fleet.sqe.io/capacity: cpu
+{{- end }}
+{{- if and .Values.cpu.enabled .Values.gpu.enabled }}
+---
+{{- end }}
+{{- if .Values.gpu.enabled }}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: model-fleet-gpu
+spec:
+  amiSelectorTerms:
+    - alias: {{ .Values.amiAlias | quote }}
+  role: {{ .Values.nodeRoleName | quote }}
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+  tags:
+    karpenter.sh/discovery: {{ .Values.discoveryTag | quote }}
+    model-fleet.sqe.io/capacity: gpu
+{{- end }}

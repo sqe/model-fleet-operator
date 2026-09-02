@@ -1,0 +1,139 @@
+profile: kind
+
+image:
+  repository: ghcr.io/sqe/model-fleet-operator
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+operator:
+  replicaCount: 1
+  extraEnv: []
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+slack:
+  enabled: false
+  replicaCount: 1
+  existingSecret: ""
+  tokenKey: slack-bot-token
+  appTokenKey: slack-app-token
+  signingSecretKey: slack-signing-secret
+  grafanaTokenKey: grafana-service-account-token
+  prometheusTokenKey: prometheus-service-account-token
+  quotaRequests:
+    enabled: false
+    contactEmail: ""
+    justification: Capacity requested through Model Fleet operations
+  agentSupervisor:
+    enabled: false
+    url: ""
+    apiKeyKey: control-plane-api-key
+  extraEnv: []
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+kafka:
+  enabled: false
+  bootstrapServers: ""
+  commandTopic: model-fleet.commands.v1
+  eventTopic: model-fleet.events.v1
+  dlqTopic: model-fleet.commands.dlq.v1
+  consumerGroup: model-fleet-controller-v1
+  maxAttempts: 3
+  triggerAuthentication: ""
+  scalerMetadata: {}
+  extraEnv: []
+  minReplicas: 0
+  maxReplicas: 1
+  pollingInterval: 15
+  cooldownPeriod: 60
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+controlPlane:
+  enabled: false
+  fleetAgentEnabled: true
+  replicas: 1
+  existingSecret: ""
+  apiKeySecretKey: control-plane-api-key
+  routesJson: "{}"
+  supervisorModel: router
+  mlflowTrackingUri: ""
+  extraEnv: []
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  supervisorRoute:
+    enabled: false
+    hostname: ""
+    sectionName: https
+  gatewayRoute:
+    enabled: false
+    hostname: ""
+    sectionName: https
+  fleetAgentRoute:
+    enabled: false
+    hostname: ""
+    sectionName: https
+
+karpenterAvailable: false
+gateway:
+  enabled: true
+  name: model-fleet
+  gatewayClassName: cilium
+  http:
+    enabled: true
+    port: 80
+  https:
+    enabled: false
+    port: 443
+    certificateRefs: []
+serviceAccount:
+  operator:
+    create: true
+    name: ""
+    annotations: {}
+  slack:
+    create: true
+    name: ""
+    annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: {type: RuntimeDefault}
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities: {drop: [ALL]}
+  readOnlyRootFilesystem: true
+
+grafanaDashboard:
+  enabled: false
+  label: grafana_dashboard
+  labelValue: "1"
+  key: model-fleet.json

@@ -1,0 +1,23 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: Dataset
+metadata:
+  name: imdb-e6281661
+  namespace: models
+spec:
+  uri: hf://datasets/stanfordnlp/imdb@e6281661ce1c48d982bc483cf8a173c1bbeb5d31
+  version: e6281661ce1c48d982bc483cf8a173c1bbeb5d31
+  format: parquet
+  owner: research-platform
+  description: Public IMDB dataset pinned to its verified Hugging Face commit.
+  license: other
+  classification: public
+  schema:
+    fields:
+      - {name: text, type: string}
+      - {name: label, type: int64}
+  splits:
+    - name: train
+      uri: hf://datasets/stanfordnlp/imdb@e6281661ce1c48d982bc483cf8a173c1bbeb5d31/train
+    - name: test
+      uri: hf://datasets/stanfordnlp/imdb@e6281661ce1c48d982bc483cf8a173c1bbeb5d31/test
+  allowedServiceAccounts: [training-public]

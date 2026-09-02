@@ -1,0 +1,30 @@
+{{- if .Values.kafka.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-command-worker
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "model-fleet.fullname" . }}-command-worker
+  pollingInterval: {{ .Values.kafka.pollingInterval }}
+  cooldownPeriod: {{ .Values.kafka.cooldownPeriod }}
+  minReplicaCount: {{ .Values.kafka.minReplicas }}
+  maxReplicaCount: {{ .Values.kafka.maxReplicas }}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ .Values.kafka.bootstrapServers | quote }}
+        consumerGroup: {{ .Values.kafka.consumerGroup | quote }}
+        topic: {{ .Values.kafka.commandTopic | quote }}
+        lagThreshold: "1"
+        activationLagThreshold: "0"
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+        scaleToZeroOnInvalidOffset: "false"
+        {{- with .Values.kafka.scalerMetadata }}{{ toYaml . | nindent 8 }}{{- end }}
+      {{- if .Values.kafka.triggerAuthentication }}
+      authenticationRef:
+        name: {{ .Values.kafka.triggerAuthentication }}
+      {{- end }}
+{{- end }}

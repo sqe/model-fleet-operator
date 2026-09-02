@@ -1,0 +1,13 @@
+{
+  "profile": "gcp",
+  "namespace": "models",
+  "serviceAccount": "model-runner",
+  "projectId": "research-project",
+  "googleServiceAccount": "model-runner@research-project.iam.gserviceaccount.com",
+  "readBuckets": [
+    "research-models"
+  ],
+  "writeBuckets": [
+    "research-results"
+  ]
+}

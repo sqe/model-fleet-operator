@@ -1,0 +1,156 @@
+{{- if .Values.controlPlane.enabled }}
+{{- if not .Values.kafka.enabled }}{{ fail "kafka.enabled must be true when controlPlane.enabled=true" }}{{- end }}
+{{- if and (or .Values.controlPlane.supervisorRoute.enabled .Values.controlPlane.gatewayRoute.enabled .Values.controlPlane.fleetAgentRoute.enabled) (not .Values.controlPlane.existingSecret) }}{{ fail "controlPlane.existingSecret is required when a public control-plane route is enabled" }}{{- end }}
+{{- $root := . }}
+{{- range $component := list "registry" "supervisor" "gateway" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-fleet.fullname" $root }}-{{ $component }}
+  labels: {{- include "model-fleet.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $root.Values.controlPlane.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $component }}}
+  template:
+    metadata:
+      labels:
+        {{- include "model-fleet.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: {{ include "model-fleet.controlPlaneSA" $root }}
+      automountServiceAccountToken: {{ ne $component "gateway" }}
+      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      imagePullSecrets: {{- toYaml $root.Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: {{ $component }}
+          image: {{ printf "%s:%s" $root.Values.image.repository $root.Values.image.tag | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command: [uvicorn]
+          args: [modelfleet.{{ $component }}:app, --host, 0.0.0.0, --port, "8000"]
+          envFrom:
+            - configMapRef: {name: {{ include "model-fleet.fullname" $root }}-config}
+          env:
+            - {name: POD_NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+            - {name: AGENT_REGISTRY_URL, value: "http://{{ include "model-fleet.fullname" $root }}-registry:8000"}
+            - {name: LLM_GATEWAY_URL, value: "http://{{ include "model-fleet.fullname" $root }}-gateway:8000"}
+            {{- if $root.Values.controlPlane.existingSecret }}
+            - name: CONTROL_PLANE_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.controlPlane.existingSecret }}, key: {{ $root.Values.controlPlane.apiKeySecretKey }}}}
+            {{- end }}
+            {{- with $root.Values.kafka.extraEnv }}{{ toYaml . | nindent 12 }}{{- end }}
+            {{- with $root.Values.controlPlane.extraEnv }}{{ toYaml . | nindent 12 }}{{- end }}
+          ports: [{name: http, containerPort: 8000, protocol: TCP}]
+          readinessProbe: {httpGet: {path: /health, port: http}, initialDelaySeconds: 3, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /health, port: http}, initialDelaySeconds: 10, periodSeconds: 20}
+          securityContext: {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml $root.Values.controlPlane.resources | nindent 12 }}
+      nodeSelector: {{- toYaml $root.Values.controlPlane.nodeSelector | nindent 8 }}
+      tolerations: {{- toYaml $root.Values.controlPlane.tolerations | nindent 8 }}
+      affinity: {{- toYaml $root.Values.controlPlane.affinity | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "model-fleet.fullname" $root }}-{{ $component }}
+  labels: {{- include "model-fleet.labels" $root | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $component }}}
+  ports: [{name: http, port: 8000, targetPort: http}]
+{{- end }}
+{{- if .Values.controlPlane.fleetAgentEnabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-fleet-agent
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+  annotations:
+    fleet.sqe.io/agent-registration: model-fleet-operations
+spec:
+  replicas: {{ .Values.controlPlane.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: fleet-agent}
+  template:
+    metadata:
+      labels:
+        {{- include "model-fleet.labels" . | nindent 8 }}
+        app.kubernetes.io/component: fleet-agent
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000", prometheus.io/path: /metrics}
+    spec:
+      serviceAccountName: {{ include "model-fleet.controlPlaneSA" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: agent
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          command: [uvicorn]
+          args: [modelfleet.fleet_agent:app, --host, 0.0.0.0, --port, "8000"]
+          envFrom: [{configMapRef: {name: {{ include "model-fleet.fullname" . }}-config}}]
+          env:
+            - {name: AGENT_REGISTRY_URL, value: "http://{{ include "model-fleet.fullname" . }}-registry:8000"}
+            - {name: FLEET_AGENT_ENDPOINT, value: "http://{{ include "model-fleet.fullname" . }}-fleet-agent:8000"}
+            {{- if .Values.controlPlane.existingSecret }}
+            - name: CONTROL_PLANE_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.controlPlane.existingSecret }}, key: {{ .Values.controlPlane.apiKeySecretKey }}}}
+            {{- end }}
+            {{- with .Values.kafka.extraEnv }}{{ toYaml . | nindent 12 }}{{- end }}
+          ports: [{name: http, containerPort: 8000}]
+          readinessProbe: {httpGet: {path: /health, port: http}}
+          livenessProbe: {httpGet: {path: /health, port: http}, initialDelaySeconds: 10}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-fleet-agent
+spec:
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: fleet-agent}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: fleet.sqe.io/v1alpha1
+kind: AgentRegistration
+metadata:
+  name: model-fleet-operations
+spec:
+  name: model-fleet-operations
+  description: Operates Model Fleet inference, training, dataset, and agent resources.
+  version: "0.1.0"
+  endpoint: http://{{ include "model-fleet.fullname" . }}-fleet-agent:8000
+  kafka_topic: tasks.model-fleet-operations
+  kafka_result_topic: results.model-fleet-operations
+  max_concurrent_tasks: 1
+  timeout_seconds: 60
+  skills:
+    - {id: fleet.status, name: Fleet status, description: Inspect Model Fleet resources.}
+    - {id: fleet.inference.control, name: Inference control, description: Start or stop inference.}
+    - {id: fleet.training.control, name: Training control, description: Pause or resume training.}
+    - {id: fleet.agent.control, name: Agent control, description: Start or stop managed agents.}
+  runtime:
+    deploymentName: {{ include "model-fleet.fullname" . }}-fleet-agent
+    activeReplicas: {{ .Values.controlPlane.replicas }}
+{{- end }}
+{{- range $name, $route := dict "supervisor" .Values.controlPlane.supervisorRoute "gateway" .Values.controlPlane.gatewayRoute "fleet-agent" .Values.controlPlane.fleetAgentRoute }}
+{{- if $route.enabled }}
+{{- if not $route.hostname }}{{ fail (printf "controlPlane.%sRoute.hostname is required" $name) }}{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "model-fleet.fullname" $ }}-{{ $name }}
+spec:
+  parentRefs:
+    - name: {{ $.Values.gateway.name }}
+      sectionName: {{ $route.sectionName }}
+  hostnames: [{{ $route.hostname | quote }}]
+  rules:
+    - backendRefs:
+        - {name: {{ include "model-fleet.fullname" $ }}-{{ $name }}, port: 8000}
+{{- end }}
+{{- end }}
+{{- end }}

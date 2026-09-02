@@ -1,0 +1,36 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agenttasks.fleet.sqe.io
+spec:
+  group: fleet.sqe.io
+  scope: Namespaced
+  names: {kind: AgentTask, listKind: AgentTaskList, plural: agenttasks, singular: agenttask, shortNames: [atask]}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      additionalPrinterColumns:
+        - {name: Agent, type: string, jsonPath: .spec.agent}
+        - {name: Skill, type: string, jsonPath: .spec.skill}
+        - {name: Phase, type: string, jsonPath: .status.phase}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion: {type: string}
+            kind: {type: string}
+            metadata: {type: object}
+            spec:
+              type: object
+              required: [agent, skill]
+              properties:
+                agent: {type: string, minLength: 1}
+                skill: {type: string, minLength: 1}
+            status:
+              type: object
+              properties:
+                phase: {type: string, enum: [pending, routed, running, completed, failed]}
+                message: {type: string}

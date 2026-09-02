@@ -1,0 +1,7 @@
+apiVersion: v2
+name: model-fleet-operator
+description: Kubernetes operator for model inference and training workloads, with an optional Slack bot
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"

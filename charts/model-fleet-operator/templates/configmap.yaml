@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-config
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+data:
+  PLATFORM_PROFILE: {{ .Values.profile | quote }}
+  KARPENTER_AVAILABLE: {{ .Values.karpenterAvailable | quote }}
+  KAFKA_ENABLED: {{ .Values.kafka.enabled | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafka.bootstrapServers | quote }}
+  KAFKA_COMMAND_TOPIC: {{ .Values.kafka.commandTopic | quote }}
+  KAFKA_EVENT_TOPIC: {{ .Values.kafka.eventTopic | quote }}
+  KAFKA_DLQ_TOPIC: {{ .Values.kafka.dlqTopic | quote }}
+  KAFKA_CONSUMER_GROUP: {{ .Values.kafka.consumerGroup | quote }}
+  KAFKA_MAX_ATTEMPTS: {{ .Values.kafka.maxAttempts | quote }}
+  MODEL_FLEET_LLM_ROUTES: {{ .Values.controlPlane.routesJson | quote }}
+  SUPERVISOR_MODEL: {{ .Values.controlPlane.supervisorModel | quote }}
+  MLFLOW_TRACKING_URI: {{ .Values.controlPlane.mlflowTrackingUri | quote }}

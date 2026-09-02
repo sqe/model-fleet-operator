@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package modelfleet.agent.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/sqe/model-fleet-operator/sdk/go/gen/modelfleet/agent/v1;agentv1";
+
+service AgentService {
+  rpc GetCard(GetCardRequest) returns (AgentCard);
+  rpc Execute(TaskRequest) returns (TaskResult);
+  rpc ExecuteStream(stream TaskRequest) returns (stream TaskResult);
+}
+
+message GetCardRequest {}
+
+message Skill {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Struct input_schema = 4;
+}
+
+message Transport {
+  string protocol = 1;
+  string endpoint = 2;
+}
+
+message AgentCard {
+  string name = 1;
+  string description = 2;
+  string version = 3;
+  string endpoint = 4;
+  string kafka_topic = 5;
+  string kafka_result_topic = 6;
+  int32 max_concurrent_tasks = 7;
+  int32 timeout_seconds = 8;
+  repeated Skill skills = 9;
+  repeated Transport transports = 10;
+}
+
+message TaskRequest {
+  string id = 1;
+  string skill = 2;
+  google.protobuf.Struct params = 3;
+  map<string, string> metadata = 4;
+}
+
+message TaskError {
+  int32 code = 1;
+  string message = 2;
+}
+
+message TaskResult {
+  string id = 1;
+  google.protobuf.Value result = 2;
+  TaskError error = 3;
+  map<string, string> metadata = 4;
+}

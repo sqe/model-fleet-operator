@@ -1,0 +1,125 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-operator
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, services]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [keda.sh]
+    resources: [scaledobjects]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [fleet.sqe.io]
+    resources: [inferenceservices, trainingruns]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [fleet.sqe.io]
+    resources: [datasets]
+    verbs: [get, list, watch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [agentregistrations]
+    verbs: [get, list, watch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [agentregistrations/status]
+    verbs: [get, update, patch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [inferenceservices/status, trainingruns/status, datasets/status, inferenceservices/finalizers, trainingruns/finalizers]
+    verbs: [get, update, patch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-operator
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "model-fleet.fullname" . }}-operator}
+subjects:
+  - {kind: ServiceAccount, name: {{ include "model-fleet.operatorSA" . }}, namespace: {{ .Release.Namespace }}}
+{{- if .Values.slack.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-slack
+rules:
+  - apiGroups: [fleet.sqe.io]
+    resources: [inferenceservices, trainingruns]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [datasets]
+    verbs: [get, list, watch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [agentregistrations]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [get, list]
+  - apiGroups: [keda.sh]
+    resources: [scaledobjects]
+    verbs: [get, list]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways, httproutes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-slack
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "model-fleet.fullname" . }}-slack}
+subjects:
+  - {kind: ServiceAccount, name: {{ include "model-fleet.slackSA" . }}, namespace: {{ .Release.Namespace }}}
+{{- end }}
+{{- if .Values.controlPlane.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-control-plane
+rules:
+  - apiGroups: [fleet.sqe.io]
+    resources: [agentregistrations, agenttasks]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [agenttasks/status]
+    verbs: [get, update, patch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [inferenceservices, trainingruns]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [fleet.sqe.io]
+    resources: [datasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-control-plane
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "model-fleet.fullname" . }}-control-plane}
+subjects:
+  - {kind: ServiceAccount, name: {{ include "model-fleet.controlPlaneSA" . }}, namespace: {{ .Release.Namespace }}}
+{{- end }}

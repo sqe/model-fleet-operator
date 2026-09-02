@@ -1,0 +1,88 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: datasets.fleet.sqe.io
+spec:
+  group: fleet.sqe.io
+  scope: Namespaced
+  names:
+    kind: Dataset
+    listKind: DatasetList
+    plural: datasets
+    singular: dataset
+    shortNames: [dset]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources: {status: {}}
+      additionalPrinterColumns:
+        - {name: Version, type: string, jsonPath: .spec.version}
+        - {name: Format, type: string, jsonPath: .spec.format}
+        - {name: Classification, type: string, jsonPath: .spec.classification}
+        - {name: Phase, type: string, jsonPath: .status.phase}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion: {type: string}
+            kind: {type: string}
+            metadata: {type: object}
+            spec:
+              type: object
+              required: [uri, version, format, owner, classification]
+              x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: Dataset versions are immutable. Create a new Dataset object for a new version
+              properties:
+                uri: {type: string, minLength: 1}
+                version: {type: string, minLength: 1}
+                format:
+                  type: string
+                  enum: [parquet, json, jsonl, csv, text, image, audio, webdataset, custom]
+                owner: {type: string, minLength: 1}
+                description: {type: string}
+                license: {type: string}
+                classification:
+                  type: string
+                  enum: [public, internal, confidential, restricted]
+                checksum: {type: string, pattern: '^sha256:[a-f0-9]{64}$'}
+                sizeBytes: {type: integer, format: int64, minimum: 0}
+                schema: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                splits:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name, uri]
+                    properties:
+                      name: {type: string, minLength: 1}
+                      uri: {type: string, minLength: 1}
+                      checksum: {type: string, pattern: '^sha256:[a-f0-9]{64}$'}
+                      sizeBytes: {type: integer, format: int64, minimum: 0}
+                allowedServiceAccounts:
+                  type: array
+                  items: {type: string, minLength: 1}
+                  uniqueItems: true
+                storage:
+                  type: object
+                  properties:
+                    pvc:
+                      type: object
+                      required: [claimName]
+                      properties:
+                        claimName: {type: string, minLength: 1}
+                        subPath: {type: string}
+            status:
+              type: object
+              properties:
+                phase: {type: string, enum: [Registered, Invalid]}
+                message: {type: string}
+                observedGeneration: {type: integer, format: int64}
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items: {type: object, x-kubernetes-preserve-unknown-fields: true}

@@ -1,0 +1,29 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name }}
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.gatewayClassName }}
+  listeners:
+    {{- if .Values.gateway.http.enabled }}
+    - name: http
+      protocol: HTTP
+      port: {{ .Values.gateway.http.port }}
+      allowedRoutes:
+        namespaces:
+          from: All
+    {{- end }}
+    {{- if .Values.gateway.https.enabled }}
+    - name: https
+      protocol: HTTPS
+      port: {{ .Values.gateway.https.port }}
+      tls:
+        mode: Terminate
+        certificateRefs: {{- toYaml .Values.gateway.https.certificateRefs | nindent 10 }}
+      allowedRoutes:
+        namespaces:
+          from: All
+    {{- end }}
+{{- end }}

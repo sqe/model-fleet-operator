@@ -1,0 +1,41 @@
+# Create model-store-reader in this namespace with access-key and secret-key keys.
+apiVersion: fleet.sqe.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: <service-name>
+  namespace: models
+spec:
+  model:
+    name: <model-name>
+    version: <immutable-version>
+    uri: s3://models/<model-name>/<immutable-version>/
+  initContainers:
+    - name: model-fetcher
+      image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+      command: [/bin/sh, -c]
+      args:
+        - >-
+          mc alias set artifacts http://minio.model-artifacts.svc.cluster.local:9000
+          "$ACCESS_KEY" "$SECRET_KEY" &&
+          mc cp --recursive artifacts/models/<model-name>/<immutable-version>/ /models/repository/
+      env:
+        - name: ACCESS_KEY
+          valueFrom: {secretKeyRef: {name: model-store-reader, key: access-key}}
+        - name: SECRET_KEY
+          valueFrom: {secretKeyRef: {name: model-store-reader, key: secret-key}}
+      volumeMounts:
+        - {name: model-cache, mountPath: /models}
+  container:
+    image: <multi-architecture-serving-image>@sha256:<image-index-digest>
+    args: [--model, /models/repository, --host, 0.0.0.0]
+    port: 8000
+    volumeMounts:
+      - {name: model-cache, mountPath: /models, readOnly: true}
+    resources:
+      requests: {cpu: "2", memory: 8Gi}
+      limits: {cpu: "2", memory: 8Gi}
+  volumes:
+    - name: model-cache
+      emptyDir: {}
+  replicas: 1
+  service: {port: 80}

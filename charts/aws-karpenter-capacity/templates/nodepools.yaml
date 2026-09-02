@@ -1,0 +1,90 @@
+{{- include "model-fleet.require" . }}
+{{- if .Values.cpu.enabled }}
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: model-fleet-cpu
+spec:
+  template:
+    metadata:
+      labels:
+        model-fleet.sqe.io/capacity: cpu
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: model-fleet-cpu
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: {{ toJson .Values.cpu.architectures }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: {{ toJson .Values.cpu.capacityTypes }}
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: {{ toJson .Values.cpu.categories }}
+        - key: karpenter.k8s.aws/instance-hypervisor
+          operator: In
+          values: [nitro]
+  limits:
+    cpu: {{ .Values.cpu.cpuLimit | quote }}
+    memory: {{ .Values.cpu.memoryLimit | quote }}
+  disruption:
+    consolidationPolicy: {{ .Values.disruption.consolidationPolicy }}
+    consolidateAfter: {{ .Values.disruption.consolidateAfter }}
+{{- end }}
+{{- if and .Values.cpu.enabled .Values.gpu.enabled }}
+---
+{{- end }}
+{{- if .Values.gpu.enabled }}
+{{- range $index, $class := .Values.gpu.classes }}
+{{- if $index }}
+---
+{{- end }}
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: model-fleet-{{ $class.name }}
+spec:
+  template:
+    metadata:
+      labels:
+        accelerator: nvidia
+        model-fleet.sqe.io/capacity: gpu
+        model-fleet.sqe.io/gpu-class: {{ $class.name }}
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: model-fleet-gpu
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: {{ toJson $.Values.gpu.architectures }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: {{ toJson $.Values.gpu.capacityTypes }}
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: {{ toJson $.Values.gpu.families }}
+        - key: karpenter.k8s.aws/instance-gpu-memory
+          operator: Gt
+          values: [{{ sub $class.minMemoryMiB 1 | quote }}]
+        {{- if $class.maxMemoryMiB }}
+        - key: karpenter.k8s.aws/instance-gpu-memory
+          operator: Lt
+          values: [{{ add $class.maxMemoryMiB 1 | quote }}]
+        {{- end }}
+        - key: karpenter.k8s.aws/instance-hypervisor
+          operator: In
+          values: [nitro]
+  limits:
+    nvidia.com/gpu: {{ $class.gpuLimit | quote }}
+    cpu: {{ $.Values.gpu.cpuLimit | quote }}
+    memory: {{ $.Values.gpu.memoryLimit | quote }}
+  disruption:
+    consolidationPolicy: {{ $.Values.disruption.consolidationPolicy }}
+    consolidateAfter: {{ $.Values.disruption.consolidateAfter }}
+{{- end }}
+{{- end }}

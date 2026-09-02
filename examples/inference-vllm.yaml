@@ -1,0 +1,66 @@
+apiVersion: fleet.sqe.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: granite-3
+  namespace: models
+spec:
+  model:
+    name: ibm-granite/granite-3.3-2b-instruct
+    version: 707f574c62054322f6b5b04b6d075f0a8f05e0f0
+    uri: hf://ibm-granite/granite-3.3-2b-instruct@707f574c62054322f6b5b04b6d075f0a8f05e0f0
+  container:
+    image: vllm/vllm-openai:v0.10.1
+    args:
+      - --model
+      - ibm-granite/granite-3.3-2b-instruct
+      - --revision
+      - 707f574c62054322f6b5b04b6d075f0a8f05e0f0
+      - --host
+      - 0.0.0.0
+    env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef: {name: huggingface-read-token, key: token}
+    port: 8000
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+        nvidia.com/gpu: "1"
+      limits:
+        nvidia.com/gpu: "1"
+  replicas: 0
+  accelerator:
+    count: 1
+    fit:
+      modules:
+        - {name: model-weights, memoryGiB: 5, distribution: sharded}
+        - {name: kv-cache, memoryGiB: 8, distribution: sharded}
+        - {name: vllm-runtime, memoryGiB: 3, distribution: replicated}
+      safetyMarginPercent: 15
+  autoscaling:
+    enabled: true
+    minReplicas: 0
+    maxReplicas: 3
+    pollingInterval: 15
+    cooldownPeriod: 300
+    triggers:
+      - type: prometheus
+        metadata:
+          serverAddress: http://prometheus.monitoring.svc:9090
+          query: sum(model_fleet_pending_requests{service="granite-3"})
+          threshold: "4"
+          activationThreshold: "0"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  service:
+    port: 80
+  gateway:
+    enabled: true
+    name: model-fleet
+    namespace: model-fleet-system
+    sectionName: https
+    hostnames: [granite.example.com]
+    pathPrefix: /

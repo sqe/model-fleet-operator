@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "model-fleet-operator"
+version = "0.1.0"
+description = "A Kubernetes operator for portable model inference and training workloads"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Model Fleet contributors" }]
+dependencies = [
+  "boto3>=1.35,<2",
+  "confluent-kafka>=2.8,<3",
+  "fastapi>=0.115,<1",
+  "google-auth>=2.38,<3",
+  "httpx>=0.27,<1",
+  "kopf>=1.37.4,<2",
+  "kubernetes>=30,<35",
+  "mlflow-skinny>=2.20,<4",
+  "prometheus-client>=0.21,<1",
+  "slack-bolt>=1.21,<2",
+  "uvicorn>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.9,<1",
+]
+docs = [
+  "myst-parser>=4,<5",
+  "sphinx>=8,<10",
+  "sphinxcontrib-mermaid>=1,<2",
+  "sphinx-rtd-theme>=3,<4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modelfleet"]
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=modelfleet.resources --cov=modelfleet.slack --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

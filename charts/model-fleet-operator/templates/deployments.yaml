@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-operator
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: operator}
+  template:
+    metadata:
+      annotations: {{- toYaml .Values.operator.podAnnotations | nindent 8 }}
+      labels:
+        {{- include "model-fleet.labels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+        {{- with .Values.operator.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
+    spec:
+      serviceAccountName: {{ include "model-fleet.operatorSA" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: operator
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, modelfleet.operator]
+          envFrom:
+            - configMapRef: {name: {{ include "model-fleet.fullname" . }}-config}
+          env: {{- toYaml .Values.operator.extraEnv | nindent 12 }}
+          ports:
+            - {name: health, containerPort: 8080, protocol: TCP}
+          readinessProbe: {tcpSocket: {port: health}, initialDelaySeconds: 5, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: health}, initialDelaySeconds: 15, periodSeconds: 20}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.operator.resources | nindent 12 }}
+      nodeSelector: {{- toYaml .Values.operator.nodeSelector | nindent 8 }}
+      tolerations: {{- toYaml .Values.operator.tolerations | nindent 8 }}
+      affinity: {{- toYaml .Values.operator.affinity | nindent 8 }}
+{{- if .Values.slack.enabled }}
+{{- if not .Values.slack.existingSecret }}{{ fail "slack.existingSecret is required when slack.enabled=true" }}{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-slack
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.slack.replicaCount }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: slack}
+  template:
+    metadata:
+      labels:
+        {{- include "model-fleet.labels" . | nindent 8 }}
+        app.kubernetes.io/component: slack
+    spec:
+      serviceAccountName: {{ include "model-fleet.slackSA" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: slack
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, modelfleet.slack]
+          envFrom:
+            - configMapRef: {name: {{ include "model-fleet.fullname" . }}-config}
+          env:
+            - name: SLACK_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.tokenKey }}}}
+            - name: SLACK_APP_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.appTokenKey }}}}
+            - name: SLACK_SIGNING_SECRET
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.signingSecretKey }}}}
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.grafanaTokenKey }}, optional: true}}
+            - name: PROMETHEUS_SERVICE_ACCOUNT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.prometheusTokenKey }}, optional: true}}
+            - name: SLACK_QUOTA_REQUESTS_ENABLED
+              value: {{ .Values.slack.quotaRequests.enabled | quote }}
+            - name: QUOTA_CONTACT_EMAIL
+              value: {{ .Values.slack.quotaRequests.contactEmail | quote }}
+            - name: QUOTA_JUSTIFICATION
+              value: {{ .Values.slack.quotaRequests.justification | quote }}
+            {{- if .Values.slack.agentSupervisor.enabled }}
+            {{- if not .Values.slack.agentSupervisor.url }}{{ fail "slack.agentSupervisor.url is required when agent task routing is enabled" }}{{- end }}
+            - name: AGENT_SUPERVISOR_URL
+              value: {{ .Values.slack.agentSupervisor.url | quote }}
+            - name: CONTROL_PLANE_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.slack.existingSecret }}, key: {{ .Values.slack.agentSupervisor.apiKeyKey }}}}
+            {{- end }}
+            {{- with .Values.kafka.extraEnv }}{{ toYaml . | nindent 12 }}{{- end }}
+            {{- with .Values.slack.extraEnv }}{{ toYaml . | nindent 12 }}{{- end }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.slack.resources | nindent 12 }}
+      nodeSelector: {{- toYaml .Values.slack.nodeSelector | nindent 8 }}
+      tolerations: {{- toYaml .Values.slack.tolerations | nindent 8 }}
+      affinity: {{- toYaml .Values.slack.affinity | nindent 8 }}
+{{- end }}
+{{- if .Values.kafka.enabled }}
+{{- if not .Values.kafka.bootstrapServers }}{{ fail "kafka.bootstrapServers is required when kafka.enabled=true" }}{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-fleet.fullname" . }}-command-worker
+  labels: {{- include "model-fleet.labels" . | nindent 4 }}
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: command-worker}
+  template:
+    metadata:
+      labels:
+        {{- include "model-fleet.labels" . | nindent 8 }}
+        app.kubernetes.io/component: command-worker
+    spec:
+      serviceAccountName: {{ include "model-fleet.operatorSA" . }}
+      terminationGracePeriodSeconds: 30
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, modelfleet.command_worker]
+          envFrom:
+            - configMapRef: {name: {{ include "model-fleet.fullname" . }}-config}
+          env: {{- toYaml .Values.kafka.extraEnv | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.kafka.resources | nindent 12 }}
+      nodeSelector: {{- toYaml .Values.kafka.nodeSelector | nindent 8 }}
+      tolerations: {{- toYaml .Values.kafka.tolerations | nindent 8 }}
+      affinity: {{- toYaml .Values.kafka.affinity | nindent 8 }}
+{{- end }}
