@@ -22,6 +22,10 @@ mix. Validate startup and peak memory before changing its declared module
 budgets. Use a 32/48 GiB GPU for a production 27B endpoint, or an official
 smaller AWQ model such as `Qwen/Qwen3-14B-AWQ` when 24 GiB headroom matters.
 
+For Apple Silicon evaluation, follow [GPU and Apple Silicon inference](ACCELERATOR_INFERENCE.md).
+MLX runs natively on macOS; kind's Linux nodes cannot pass through Metal, so it
+must not be represented as an operator-managed `InferenceService`.
+
 Point a supervisor route at the service:
 
 ```json

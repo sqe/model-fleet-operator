@@ -11,3 +11,4 @@ html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 myst_enable_extensions = ["colon_fence", "deflist"]
 mermaid_version = "11.6.0"
+mermaid_height = "auto"

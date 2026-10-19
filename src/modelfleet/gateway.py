@@ -2,12 +2,13 @@
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from .control_auth import require_control_token
 
@@ -21,12 +22,23 @@ COST = Counter(
     "Estimated inference cost in USD",
     ["namespace", "workload", "model"],
 )
+UPSTREAM_REQUESTS = Counter(
+    "model_fleet_upstream_requests_total",
+    "Requests sent through the model gateway",
+    ["namespace", "workload", "model", "runtime", "result"],
+)
+UPSTREAM_LATENCY = Histogram(
+    "model_fleet_upstream_request_duration_seconds",
+    "Model gateway upstream request latency",
+    ["namespace", "workload", "model", "runtime"],
+)
 
 
 @dataclass(frozen=True)
 class Route:
     base_url: str
     upstream_model: str
+    runtime: str = "openai-compatible"
     api_key_env: str | None = None
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
@@ -87,6 +99,7 @@ def create_app(
             headers["Authorization"] = f"Bearer {key}"
         forwarded = {**payload, "model": route.upstream_model}
         client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0))
+        started = time.monotonic()
         try:
             response = await client.post(
                 f"{route.base_url.rstrip('/')}/v1/chat/completions", json=forwarded, headers=headers
@@ -94,10 +107,19 @@ def create_app(
             response.raise_for_status()
             result = response.json()
         except (httpx.HTTPError, ValueError) as exc:
+            UPSTREAM_REQUESTS.labels(
+                route.namespace, route.workload, alias, route.runtime, "error"
+            ).inc()
             raise HTTPException(502, "upstream inference failed") from exc
         finally:
+            UPSTREAM_LATENCY.labels(route.namespace, route.workload, alias, route.runtime).observe(
+                time.monotonic() - started
+            )
             if http_client is None:
                 await client.aclose()
+        UPSTREAM_REQUESTS.labels(
+            route.namespace, route.workload, alias, route.runtime, "success"
+        ).inc()
         record_usage(alias, route, result.get("usage", {}))
         return result
 

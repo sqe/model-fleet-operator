@@ -1,0 +1,12 @@
+# Development only: route the in-cluster Model Fleet gateway to an MLX server
+# running natively on the Docker Desktop macOS host.
+kafka:
+  enabled: true
+  bootstrapServers: kafka.kafka.svc:9092
+
+controlPlane:
+  enabled: true
+  existingSecret: model-fleet-control
+  supervisorModel: qwen38-mlx
+  routesJson: >-
+    {"qwen38-mlx":{"base_url":"http://host.docker.internal:8081","upstream_model":"mlx-community/Qwen3.8-27B-4bit","runtime":"mlx","namespace":"model-fleet-system","workload":"mlx-host"}}

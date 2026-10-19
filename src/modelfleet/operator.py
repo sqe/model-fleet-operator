@@ -499,7 +499,7 @@ def main() -> None:
     )
     health = ThreadingHTTPServer(("0.0.0.0", 8080), _HealthHandler)
     threading.Thread(target=health.serve_forever, daemon=True, name="health-server").start()
-    kopf.run(standalone=True)
+    kopf.run(standalone=True, clusterwide=True)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from modelfleet.agent_runtime import AgentWorker, create_agent_app
-from modelfleet.gateway import Route, load_routes
+from modelfleet.gateway import Route, create_app, load_routes
 from modelfleet.protocol import AgentCard, JsonRpcTask
 from modelfleet.registry import KubernetesRegistry
 from modelfleet.supervisor import exact_skill, validate_selection
@@ -29,10 +30,52 @@ def test_exact_skill_is_deterministic_and_selection_is_strict():
 
 
 def test_gateway_routes_are_static_and_typed():
-    routes = load_routes('{"safe":{"base_url":"https://llm","upstream_model":"real"}}')
-    assert routes == {"safe": Route(base_url="https://llm", upstream_model="real")}
+    routes = load_routes(
+        '{"safe":{"base_url":"https://llm","upstream_model":"real","runtime":"mlx"}}'
+    )
+    assert routes == {"safe": Route(base_url="https://llm", upstream_model="real", runtime="mlx")}
     with pytest.raises(ValueError):
         load_routes("[]")
+
+
+def test_gateway_exports_runtime_request_and_latency_metrics(monkeypatch):
+    monkeypatch.setenv("CONTROL_PLANE_API_KEY", "secret")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/chat/completions"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+            },
+        )
+
+    upstream = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    route = Route(
+        base_url="http://mlx-host",
+        upstream_model="local-model",
+        runtime="mlx",
+        namespace="models",
+        workload="mlx-host-test",
+    )
+    client = TestClient(create_app({"mlx-test": route}, upstream))
+
+    response = client.post(
+        "/v1/chat/completions",
+        headers={"Authorization": "Bearer secret"},
+        json={"model": "mlx-test", "messages": [{"role": "user", "content": "hello"}]},
+    )
+    metrics = client.get("/metrics").text
+
+    assert response.status_code == 200
+    request_labels = (
+        'model="mlx-test",namespace="models",result="success",runtime="mlx",'
+        'workload="mlx-host-test"'
+    )
+    latency_labels = 'model="mlx-test",namespace="models",runtime="mlx",workload="mlx-host-test"'
+    assert f"model_fleet_upstream_requests_total{{{request_labels}}} 1.0" in metrics
+    assert f"model_fleet_upstream_request_duration_seconds_count{{{latency_labels}}} 1.0" in metrics
 
 
 def test_registry_lexical_search_is_ranked_and_deterministic():

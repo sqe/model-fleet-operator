@@ -1,6 +1,7 @@
 name: ci
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -10,18 +11,52 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: pytest --junitxml=reports/pytest.xml --cov-report=xml:reports/coverage.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-${{ matrix.python }}-reports
+          path: reports/
+
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
           cache: pip
       - run: pip install -e '.[dev,docs]'
       - run: ruff check src tests scripts
       - run: ruff format --check src tests scripts
-      - run: pytest
+      - run: shellcheck scripts/*.sh
+      - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
       - run: sphinx-build -W -b html docs docs/_build/html
+      - run: pip install build twine && python -m build && twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/_build/html/
+
+  charts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - run: |
           for profile in kind microk8s aws gcp; do
@@ -36,19 +71,122 @@ jobs:
             --set controlPlane.gatewayRoute.enabled=true,controlPlane.gatewayRoute.hostname=gateway.example.test \
             --set controlPlane.fleetAgentRoute.enabled=true,controlPlane.fleetAgentRoute.hostname=agent.example.test \
             >/dev/null
+      - run: helm template model-fleet charts/model-fleet-operator --values examples/slack-operator-values.yaml >/dev/null
       - run: |
           helm repo add cilium https://helm.cilium.io
           helm template cilium cilium/cilium --namespace kube-system --version 1.20.1 \
             --values infra/cilium/hubble-values.yaml >/dev/null
+
+  sdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: sdk/go/go.mod
           cache-dependency-path: sdk/go/go.mod
-      - run: cd sdk/go && go test ./...
+      - run: cd sdk/go && go test -race ./... && go vet ./...
       - uses: bufbuild/buf-setup-action@v1
       - run: buf lint && buf generate
+
+  terraform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
       - run: terraform fmt -check -recursive infra/terraform
       - run: terraform -chdir=infra/terraform/addons init -backend=false && terraform -chdir=infra/terraform/addons validate
       - run: terraform -chdir=infra/terraform/aws-karpenter init -backend=false && terraform -chdir=infra/terraform/aws-karpenter validate
       - run: terraform -chdir=infra/terraform/kind init -backend=false && terraform -chdir=infra/terraform/kind validate
+
+  images:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native architecture and smoke-test packaged services
+        run: |
+          docker build -t model-fleet-operator:ci .
+          docker run --rm --entrypoint python model-fleet-operator:ci -c \
+            'import modelfleet.operator, modelfleet.registry, modelfleet.gateway, modelfleet.supervisor, modelfleet.agent_runtime, modelfleet.slack; print("All packaged services import successfully")'
+
+  olm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      KUBECONFIG: ${{ github.workspace }}/test-kubeconfig
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: azure/setup-helm@v4
+      - name: Install bundle tools
+        run: |
+          pip install PyYAML==6.0.3
+          bash scripts/install_olm_tools.sh "$RUNNER_TEMP/olm-tools"
+          echo "$RUNNER_TEMP/olm-tools" >> "$GITHUB_PATH"
+          mkdir -p "$HOME/.config/containers"
+          printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
+      - uses: helm/kind-action@v1
+        with:
+          version: v0.30.0
+          node_image: kindest/node:v1.34.0
+          cluster_name: model-fleet-olm
+      - name: Start disposable local registry
+        run: |
+          docker run -d --name model-fleet-olm-registry --network kind -p 127.0.0.1:5009:5000 registry:2
+          docker exec model-fleet-olm-control-plane mkdir -p /etc/containerd/certs.d/localhost:5009
+          printf 'server = "http://localhost:5009"\n[host."http://model-fleet-olm-registry:5000"]\n  capabilities = ["pull", "resolve"]\n' \
+            | docker exec -i model-fleet-olm-control-plane tee /etc/containerd/certs.d/localhost:5009/hosts.toml
+          printf '\n[plugins."io.containerd.grpc.v1.cri".registry]\n  config_path = "/etc/containerd/certs.d"\n' \
+            | docker exec -i model-fleet-olm-control-plane tee -a /etc/containerd/config.toml
+          docker exec model-fleet-olm-control-plane systemctl restart containerd
+      - name: Build controller and validated OLM catalog
+        env:
+          IMG: model-fleet-operator:olm-test
+        run: |
+          docker build -t "$IMG" .
+          kind load docker-image "$IMG" --name model-fleet-olm
+          python scripts/build_bundle.py
+          operator-sdk bundle validate dist/olm/bundle --select-optional suite=operatorframework
+          docker build -t localhost:5009/model-fleet-bundle:test dist/olm/bundle
+          docker push localhost:5009/model-fleet-bundle:test
+          VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          mkdir -p dist/olm/catalog
+          opm init model-fleet-operator --default-channel=alpha --output=yaml > dist/olm/catalog/index.yaml
+          opm render --use-http localhost:5009/model-fleet-bundle:test --output=yaml >> dist/olm/catalog/index.yaml
+          printf '\n---\nschema: olm.channel\npackage: model-fleet-operator\nname: alpha\nentries:\n  - name: model-fleet-operator.v%s\n' "$VERSION" >> dist/olm/catalog/index.yaml
+          opm validate dist/olm/catalog
+          opm generate dockerfile dist/olm/catalog --builder-image=quay.io/operator-framework/opm:v1.74.0 --base-image=quay.io/operator-framework/opm:v1.74.0
+          docker build -t localhost:5009/model-fleet-catalog:test -f dist/olm/catalog.Dockerfile dist/olm
+          docker push localhost:5009/model-fleet-catalog:test
+      - name: Install through OLM and reconcile all bundled CRDs
+        run: |
+          operator-sdk olm install --version 0.46.0 --timeout 5m
+          sed 's|ghcr.io/sqe/model-fleet-operator-catalog:[^ ]*|localhost:5009/model-fleet-catalog:test|' config/olm/install.yaml | kubectl apply -f -
+          bash scripts/verify_olm.sh
+      - name: Capture diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence
+          kubectl get csv,subscription,installplan -A -o yaml > evidence/olm.yaml 2>&1 || true
+          kubectl get pods -A -o wide > evidence/pods.txt 2>&1 || true
+          kubectl get events -A --sort-by=.lastTimestamp > evidence/events.txt 2>&1 || true
+          kubectl -n model-fleet-system logs deployment/model-fleet-operator > evidence/operator.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: olm-ci-evidence
+          path: evidence/
+      - name: Remove disposable infrastructure
+        if: always()
+        run: |
+          kind delete cluster --name model-fleet-olm
+          docker rm -f model-fleet-olm-registry || true

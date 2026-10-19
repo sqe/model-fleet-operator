@@ -11,7 +11,7 @@ provided to Docker (for example, with `docker login`), never accepted here.
 EOF
 }
 
-context= image= output= platforms=linux/amd64,linux/arm64 builder=
+context='' image='' output='' platforms=linux/amd64,linux/arm64 builder=''
 args=()
 while (($#)); do
   case "$1" in

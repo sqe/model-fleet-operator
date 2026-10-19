@@ -28,11 +28,12 @@ open docs/_build/html/index.html
 | Build images and use artifact services | [Artifact toolchain](docs/ARTIFACT_TOOLCHAIN.md) |
 | Register versioned training data | [Datasets](docs/DATASETS.md) |
 | Run Qwen routing, inference, or vision LoRA | [Qwen examples](docs/QWEN_EXAMPLES.md) |
+| Run NVIDIA GPU or local Apple MLX inference | [Accelerator inference](docs/ACCELERATOR_INFERENCE.md) |
 | Operate or recover the system | [Runbooks](docs/RUNBOOKS.md) |
 | Diagnose a failure | [Troubleshooting](docs/TROUBLESHOOTING.md) |
 | Use Slack safely | [Slack commands](docs/SLACK_COMMANDS.md) |
 | Review APIs and permissions | [API reference](docs/api-reference.rst) and [security](docs/security-permissions.rst) |
-| Publish artifacts or capture project evidence | [Publishing and project evidence](docs/PUBLISHING.md) |
+| Check verification and release progress | [Dated project status](status.md) |
 
 ## Why Model Fleet
 
@@ -57,6 +58,12 @@ clusters without replacing the scheduler. Build one amd64/arm64 image, declare
 resource and accelerator requirements, attach immutable data, expose it through
 Gateway API, and let Kubernetes, KEDA, and the installed capacity provider
 handle placement and scaling.
+
+For Apple Silicon development, MLX runs natively because kind's Linux nodes
+cannot access Metal. The allowlisted gateway routes to the host endpoint and
+labels its request, latency, token, and cost metrics as `runtime="mlx"`.
+Production GPU inference remains operator-managed. See
+[GPU and Apple Silicon inference](docs/ACCELERATOR_INFERENCE.md).
 
 The provided vLLM example downloads a Hugging Face model when its pod starts.
 Every Hugging Face example reads `HF_TOKEN` from a Kubernetes Secret, including
@@ -114,19 +121,70 @@ GPU and selects the 80 GiB class. The complete manifest is
 
 ```mermaid
 flowchart LR
-  I[InferenceService] --> D[Deployment and Service]
-  I --> K[KEDA and HPA]
-  D --> R[Cilium HTTPRoute]
-  R --> G[Cilium Gateway]
-  K --> P[Pending pod]
-  T[TrainingRun] --> J[Kubernetes Job]
-  DS[Dataset] -->|exact version| J
-  J --> P
-  P --> C{Capacity owner}
-  C -->|EKS| A[AWS Karpenter provider]
-  C -->|GKE| N[GKE autoscaler]
-  C -->|MicroK8s| B[Fixed nodes or machine provider]
+  subgraph intent[Declarative workload API]
+    I[InferenceService]
+    T[TrainingRun]
+    DS[Dataset]
+    AR[AgentRegistration]
+  end
+  subgraph controller[Model Fleet controller]
+    W[Kopf create / update / resume handlers]
+    V[Validate intent and resolve dataset access]
+    R[Build and reconcile standard resources]
+    S[Status refresh every 15 seconds]
+    W --> V --> R
+  end
+  I & T & DS & AR --> W
+  R --> D[Deployment and Service]
+  R --> J[Training Job]
+  R --> K[Optional KEDA ScaledObject]
+  R --> H[Optional Gateway API HTTPRoute]
+  R --> M[Metadata or linked-agent replica intent]
+  D & J & M --> S
+  S -->|status| intent
+  K -->|HPA replica decisions| D
+  H -. configuration .-> G[Gateway controller]
+  G -->|model traffic| D
+  D & J --> P[Scheduler places CPU / GPU pods]
+  P --> C{Node capacity owner}
+  C --> A[AWS Karpenter]
+  C --> N[GKE autoscaler]
+  C --> B[Existing nodes or external provider]
 ```
+
+The controller does not serve model traffic, install GPU drivers, download
+dataset bytes, or provision cloud machines. Optional Slack/Kafka and agent
+control-plane services are separate processes available through the Helm chart.
+
+## Install with OLM or OperatorHub
+
+The OLM package installs **the controller and four CRDs**: `InferenceService`,
+`TrainingRun`, `Dataset`, and `AgentRegistration`. It watches all namespaces.
+Use Helm instead if you also need the optional Slack, Kafka, gateway, or agent
+control-plane services; do not install two controllers in the same cluster.
+
+The initial OLM release and OperatorHub submission are being validated.
+**An OperatorHub listing is not available yet.** After a verified release is
+available, its `install.yaml` asset installs the versioned project catalog and
+Subscription on a cluster with classic OLM already installed:
+
+```bash
+# Kubernetes 1.34+; classic OLM must already be installed in namespace olm.
+kubectl apply -f https://github.com/sqe/model-fleet-operator/releases/download/v0.1.0/install.yaml
+kubectl -n model-fleet-system wait --for=create csv/model-fleet-operator.v0.1.0 --timeout=5m
+kubectl -n model-fleet-system wait --for=jsonpath='{.status.phase}'=Succeeded \
+  csv/model-fleet-operator.v0.1.0 --timeout=5m
+kubectl create namespace models
+kubectl -n models apply -f config/olm/examples.yaml
+kubectl -n models get inferenceservices,trainingruns,datasets,agentregistrations
+```
+
+Run the example command from a checkout of this repository. It starts a CPU echo
+service and a small Python Job, and registers example dataset/agent metadata;
+it does not download a model or launch an agent. Dataset URIs and agent endpoints
+are placeholders. KEDA, Gateway API, GPU drivers, storage and workload images
+are separate prerequisites only when the corresponding features are enabled.
+See [installation](docs/installation.rst) for platform setup.
 
 ## Local cluster in one command
 
@@ -306,6 +364,14 @@ make validate
 `make validate` runs Ruff, unit tests with coverage, Helm lint for all four
 profiles, and Terraform validation. See [CONTRIBUTING.md](CONTRIBUTING.md) before
 changing the custom-resource API.
+
+GitHub Actions also checks Python 3.11/3.13/3.14, shell/workflow lint, built
+Python packages and documentation, Go race tests and vet, protobuf generation,
+native amd64/arm64 container imports, and a real OLM catalog installation on
+kind. Test reports and installation diagnostics are retained as artifacts.
+Release creation is gated on CI and anonymous access to the published images,
+followed by installing their catalog and exercising all four bundled CRDs.
+These CPU checks do not certify GPU performance or external cloud integrations.
 
 ## Boundaries
 

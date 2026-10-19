@@ -88,10 +88,23 @@ inference-cost panels show no data until these metrics are available.
 : Counter of estimated inference cost in USD. Required labels are `namespace`,
   `workload`, and `model`.
 
+`model_fleet_upstream_requests_total`
+: Counter of gateway requests labeled by `namespace`, `workload`, `model`,
+  `runtime`, and `result`.
+
+`model_fleet_upstream_request_duration_seconds`
+: Gateway-to-runtime latency histogram labeled by `namespace`, `workload`,
+  `model`, and `runtime`.
+
 `workload` must match the Kubernetes resource or pod naming prefix used by the
 workload selector. Cost per token is the rate of the USD counter divided by the
 rate of the token counter. This is an accounting estimate based on the metric
 producer's pricing model, not a cloud invoice.
+
+The **Gateway runtime traffic and latency** graph shows request rate, errors,
+and p95 latency. Its `runtime` label distinguishes Kubernetes runtimes such as
+`vllm` from host-native `mlx`. DCGM panels apply only to GPUs visible to
+Kubernetes and intentionally do not claim host Metal utilization.
 
 The workload variable is a regular-expression text box with a default value of
 `.*`. It is shared by pod, Deployment, HPA, Job, PVC, and application metric

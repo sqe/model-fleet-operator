@@ -43,7 +43,6 @@ http://127.0.0.1:8000`` opens it directly. Stop the local server with
    DATASETS
    WORKLOAD_TEMPLATES
    ARTIFACT_TOOLCHAIN
-   PUBLISHING
    api-reference
    security-permissions
 
@@ -60,6 +59,7 @@ http://127.0.0.1:8000`` opens it directly. Stop the local server with
    KAFKA_COMMANDS
    MODEL_VALIDATION
    AGENT_CONTROL_PLANE
+   ACCELERATOR_INFERENCE
    QWEN_EXAMPLES
 
 Project status

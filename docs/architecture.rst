@@ -25,6 +25,8 @@ runtimes.
      keda -->|replica target| deploy
      gateway[Cilium Gateway] -->|model traffic| deploy
      route -. configures .-> gateway
+     llmGateway[Allowlisted model gateway] -->|runtime=vllm| deploy
+     llmGateway -->|runtime=mlx, local only| mlx[Native MLX on macOS]
      deploy -->|pending pod| capacity[Capacity provider]
      capacity --> nodes[CPU or GPU nodes]
      metrics[Prometheus, OpenCost, DCGM, Hubble] --> grafana[Grafana]
@@ -35,12 +37,68 @@ runtimes.
      classDef control fill:#eaf2fb,stroke:#2367a9,color:#172033
      classDef runtime fill:#eaf7f2,stroke:#17805c,color:#172033
      class api,operator,control,keda,route control
-     class deploy,gateway,capacity,nodes runtime
+     class deploy,gateway,llmGateway,mlx,capacity,nodes runtime
 
 The solid lines above are runtime or control interactions. Managed agent
 registrations can scale an explicitly linked Deployment to zero or restore its
 configured replica count. The dotted line is
 declarative configuration: an ``HTTPRoute`` does not carry traffic itself.
+
+Controller anatomy
+------------------
+
+Kopf observes create, update, and resume events cluster-wide. Resource builders
+keep workload construction separate from Kubernetes API calls. Inference and
+training status timers run every 15 seconds; agent registration also refreshes
+linked Deployment status on a timer. Dataset registration records metadata
+without fetching remote data. Owner references on generated workloads allow
+Kubernetes garbage collection when their parent resource is deleted.
+
+.. mermaid::
+   :caption: From desired state to workload and observed status
+
+   flowchart TB
+     cr[InferenceService / TrainingRun / Dataset / AgentRegistration]
+     cr --> watch[Kopf create, update and resume]
+     watch --> reconcile[operator.py reconciliation]
+     reconcile --> validate[Dataset version and ServiceAccount access checks]
+     validate --> build[resources.py workload builders]
+     build --> apply[Kubernetes API create or patch]
+     apply --> children[Deployment, Service, Job and optional scaler / route]
+     reconcile --> metadata[Dataset metadata and linked-agent replica intent]
+     children --> timer[15-second observed-state refresh]
+     metadata --> timer
+     timer --> status[CR status and Prometheus metrics]
+     status --> cr
+     health[HTTP health and metrics server :8080]
+     status -. exposes .-> health
+
+Installation and verification boundaries
+-----------------------------------------
+
+Helm supports the complete optional platform. The OLM package uses the same
+chart's controller Deployment and RBAC, but owns only the four controller CRDs.
+It does not include ``AgentTask`` or the companion control-plane services. Use
+one installation method per cluster; two controllers must not race over the
+same workload resources.
+
+.. mermaid::
+   :caption: Release checks and the scope of the OLM smoke test
+
+   flowchart TB
+     source[Source revision] --> checks[Python tests, lint, docs, Helm, Go and Terraform checks]
+     checks --> images[amd64 and arm64 controller images]
+     images --> bundle[Digest-pinned OLM bundle validation]
+     bundle --> catalog[Versioned catalog]
+     catalog --> public[Anonymous image access check]
+     public --> install[CatalogSource and Subscription on kind / Kubernetes 1.34]
+     install --> smoke[Four CRDs across namespaces and inference suspend / resume]
+     smoke --> release[Verified GitHub alpha release and checksums]
+     release -. separate upstream review .-> hub[OperatorHub availability]
+
+The CPU smoke test does not certify GPU drivers, external model endpoints,
+cloud capacity provisioning, Slack, Kafka, or every optional Helm integration.
+Those integrations require their own environment-specific validation.
 
 Deployed components
 -------------------
@@ -94,8 +152,8 @@ replica; ``/fleet auto`` returns replica ownership to KEDA.
      Slack->>API: patch InferenceService intent and audit annotations
      API-->>Slack: accepted
      API-->>Operator: watch event
-     Operator->>API: Deployment replicas=0; remove ScaledObject
-     Slack-->>User: accepted; operator is reconciling
+     Operator->>API: Deployment replicas=0 and remove ScaledObject
+     Slack-->>User: accepted, operator is reconciling
 
 Install both components with the reproducible values example:
 
@@ -124,6 +182,16 @@ For example, 70 GiB of weights plus 20 GiB of KV cache sharded over two GPUs,
 4 GiB of replicated runtime memory, and a 10% margin requires 54 GiB per GPU.
 The resulting pod requests two GPUs and selects ``gpu-80gb``. See
 :doc:`GPU_CAPACITY` and ``examples/inference-multi-gpu-fit.yaml``.
+
+Apple Silicon development
+-------------------------
+
+MLX uses Metal and runs natively on an Apple Silicon host, outside a Linux kind
+node. The allowlisted model gateway can route local development traffic to
+``host.docker.internal`` and exports request, error, latency, token, and cost
+metrics labeled ``runtime="mlx"``. Kubernetes GPU services and native MLX then
+share an API and Grafana graph without pretending Kubernetes owns the host
+process. See :doc:`ACCELERATOR_INFERENCE`.
 
 Ownership boundaries
 --------------------

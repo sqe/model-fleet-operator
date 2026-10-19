@@ -77,7 +77,7 @@ spec:
                     products:
                       type: array
                       minItems: 1
-                      uniqueItems: true
+                      x-kubernetes-list-type: set
                       items: {type: string, minLength: 1}
                     fit:
                       type: object
@@ -94,7 +94,7 @@ spec:
                             required: [name, memoryGiB]
                             properties:
                               name: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'}
-                              memoryGiB: {type: number, exclusiveMinimum: 0}
+                              memoryGiB: {type: number, minimum: 0, exclusiveMinimum: true}
                               distribution: {type: string, enum: [sharded, replicated], default: replicated}
                 volumes: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
                 volumeMounts: {type: array, items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
@@ -107,4 +107,4 @@ spec:
                 startTime: {type: string, format: date-time}
                 completionTime: {type: string, format: date-time}
                 observedGeneration: {type: integer, format: int64}
-                conditions: {type: array, x-kubernetes-list-type: map, x-kubernetes-list-map-keys: [type], items: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+                conditions: {type: array, x-kubernetes-list-type: map, x-kubernetes-list-map-keys: [type], items: {type: object, required: [type], properties: {type: {type: string}}, x-kubernetes-preserve-unknown-fields: true}}
